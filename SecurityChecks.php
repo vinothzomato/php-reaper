@@ -7,7 +7,7 @@ ini_set('xdebug.max_nesting_level', 2000);
 
 class SecurityChecks {
 
-    private $dangerousFunctions = array('getone', 'getrow', 'getall', 'getcol', 'getassoc', 'execute', 'replace');
+    private $dangerousFunctions = array('execute', 'prepare', 'query');
     private $result = array();
     private $methodStatements;
     private $hasPotentialSQLInjection = false;
@@ -22,7 +22,6 @@ class SecurityChecks {
 
             $this->hasPotentialSQLInjection = true;
             print_r("Potential SQL injections in file $fileName\n");
-
             foreach ($result as $line) {
                 print_r("line: $line\n");
             }
@@ -64,6 +63,19 @@ class SecurityChecks {
         return $this->result;
     }
 
+    private function readFile($fileName, $lineNumber){
+	$line = '';
+	$handle = fopen($fileName, "r");
+	if ($handle) {
+		$i = 0;
+		while(!feof($handle) && ++$i == $lineNumber) {
+			$line = fgets($handle);
+			break;
+		}
+		fclose($handle);
+	}
+	return $line;
+    }
 
     private function findVariableByName($methodStatements, $variableName, $line) {
 
@@ -117,10 +129,12 @@ class SecurityChecks {
 
                     $this->hasPotentialSQLInjection = true;
                     print_r("Potential SQL injections in file $name\n");
-
-                    foreach ($dangerousSQLQueries as $line) {
-                        print_r("line: $line\n");
-                    }
+            	    foreach ($dangerousSQLQueries as $line) {
+                	print_r("line: $line\n");
+			$lineContent = trim($this->readFile($name, $line));
+                	echo sprintf("\033[0;31m\033[43m%s\033[0m\n",$lineContent);
+            	    }
+                    $fileLines = null;
 
                     print_r("\n");
                 }
@@ -232,7 +246,7 @@ class SecurityChecks {
             $this->checkForDoubleAssignment($methodStatement, $variable);
 
         } // this is the Param() binding
-        elseif ($variable->expr->getType() == 'Expr_BinaryOp_Concat') {
+        elseif (property_exists($variable, 'expr') && $variable->expr->getType() == 'Expr_BinaryOp_Concat') {
 
             $variable = $variable->expr;
             $this->checkConcatMethod($methodStatement, $variable);
@@ -370,7 +384,7 @@ class SecurityChecks {
 
     private function checkForDoubleAssignment($methodStatement, $variable)
     {
-        if ($variable->expr->getType() != 'Scalar_String' && $variable->expr->expr->getType() != 'Scalar_String') {
+        if (property_exists($variable, 'expr') && $variable->expr->getType() != 'Scalar_String' && $variable->expr->expr->getType() != 'Scalar_String') {
             $this->result[] = $methodStatement->getLine();
         }
     }
@@ -378,7 +392,7 @@ class SecurityChecks {
 
     private function checkForRegularString($methodStatement, $variable)
     {
-        if ($variable->expr->getType() != 'Scalar_String') {
+        if (property_exists($variable, 'expr') && $variable->expr->getType() != 'Scalar_String') {
             $this->result[] = $methodStatement->getLine();
         }
     }
